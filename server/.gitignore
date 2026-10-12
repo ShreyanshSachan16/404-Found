@@ -1,0 +1,28 @@
+# Server dependencies
+node_modules/
+
+# SQLite databases & journals
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+lost_and_found.db*
+
+# Backups
+backups/
+
+# User uploads & generated claim receipts
+uploads/*
+!uploads/.gitkeep
+uploads/receipts/*
+!uploads/receipts/.gitkeep
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log

@@ -1,0 +1,26 @@
+{
+  "name": "404-found",
+  "version": "1.0.0",
+  "description": "Production-grade AI-powered Lost & Found platform for university campuses",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -p \"[{name}]\" -n \"SERVER,CLIENT\" -c \"cyan.bold,magenta.bold\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "start:prod": "npm run build && npm --prefix server start",
+    "lint": "npm --prefix client run lint",
+    "test": "node scripts/test-runner.js all",
+    "test:flow": "node scripts/test-runner.js flow",
+    "test:audit": "node scripts/test-runner.js audit",
+    "test:all": "node scripts/test-runner.js all",
+    "seed": "npm --prefix server run seed",
+    "backup": "npm --prefix server run backup",
+    "restore": "npm --prefix server run restore",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

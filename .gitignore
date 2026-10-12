@@ -1,0 +1,74 @@
+# ==============================================================================
+# 404 FOUND — Git Ignore Configuration
+# ==============================================================================
+
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Production build artifacts
+dist/
+build/
+client/dist/
+**/dist/
+
+# SQLite databases, WAL, shared-memory, and journals
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.db.pre-restore-*
+lost_and_found.db*
+server/lost_and_found.db*
+**/lost_and_found.db*
+
+# Automated and manual database backups
+backups/
+server/backups/
+**/backups/
+
+# Uploaded files and generated claim receipts (preserve directory structure via .gitkeep)
+uploads/*
+!uploads/.gitkeep
+server/uploads/*
+!server/uploads/.gitkeep
+server/uploads/receipts/*
+!server/uploads/receipts/.gitkeep
+**/uploads/*
+!**/uploads/.gitkeep
+!**/uploads/**/.gitkeep
+
+# Environment files and secrets (NEVER commit secrets or live envs)
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+client/.env
+client/.env.*
+!client/.env.example
+
+# Logs and debugging traces
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Operating System & IDE metadata
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
