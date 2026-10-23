@@ -1,9 +1,17 @@
 const assert = require('assert');
 
+if (!process.env.TEST_PORT) {
+  console.error('❌ FATAL ISOLATION ERROR: TEST_PORT environment variable is required.');
+  console.error('   Tests must run in an isolated sandbox via "node scripts/test-runner.js".');
+  console.error('   Direct execution against live ports or default databases is blocked.');
+  process.exit(1);
+}
+
 async function testFullSystemFlow() {
   console.log('=== RUNNING COMPREHENSIVE LOST & FOUND AI LIFECYCLE TESTS ===\n');
 
-  const BASE_URL = 'http://localhost:5001/api';
+  const PORT = parseInt(process.env.TEST_PORT, 10);
+  const BASE_URL = `http://127.0.0.1:${PORT}/api`;
 
   // 1. Health check
   console.log('1. Checking Server Health...');

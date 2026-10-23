@@ -6,13 +6,14 @@ const upload = require('../middleware/upload');
 
 // Public or optional auth routes
 router.get('/', optionalAuth, itemController.getItems);
+router.get('/stats', itemController.getItemStats);
 router.post('/check-duplicate', optionalAuth, itemController.checkDuplicate);
 router.get('/:id', optionalAuth, itemController.getItemById);
 router.get('/:id/qrcode', itemController.getItemQRCode);
 
 // Protected routes
-router.post('/', authenticateToken, upload.single('image'), itemController.createItem);
-router.put('/:id', authenticateToken, upload.single('image'), itemController.updateItem);
+router.post('/', authenticateToken, upload.single('image'), upload.verifyUploadMagicBytes('image'), itemController.createItem);
+router.put('/:id', authenticateToken, upload.single('image'), upload.verifyUploadMagicBytes('image'), itemController.updateItem);
 router.delete('/:id', authenticateToken, itemController.deleteItem);
 
 module.exports = router;

@@ -18,23 +18,35 @@ function createNotification(db, { userId, title, message, type, linkUrl }) {
 
 function createMatchNotification(db, lostItem, foundItem, overallScore) {
   const percent = Math.round(overallScore * 100);
+  const lostLink = `/item/${lostItem.id}?match=${foundItem.id}`;
+  const foundLink = `/item/${foundItem.id}?match=${lostItem.id}`;
+
+  // Deduplicate: check if notification for this match link was already sent
+  const existing = db.prepare(`
+    SELECT id FROM notifications
+    WHERE user_id = ? AND type = 'MATCH_FOUND' AND link_url = ?
+  `).get(lostItem.user_id, lostLink);
+
+  if (existing) {
+    return; // Already notified
+  }
 
   // Notify the user who lost the item
   createNotification(db, {
     userId: lostItem.user_id,
     title: '🔔 Potential Match Found',
-    message: `Your lost "${lostItem.title}" has a possible match with a ${percent}% AI confidence score.`,
+    message: `Your lost "${lostItem.title}" has a possible match with a ${percent}% match confidence score.`,
     type: 'MATCH_FOUND',
-    linkUrl: `/item/${lostItem.id}?match=${foundItem.id}`
+    linkUrl: lostLink
   });
 
   // Notify the finder
   createNotification(db, {
     userId: foundItem.user_id,
     title: '🔔 Potential Owner Match',
-    message: `The item "${foundItem.title}" you found has an AI match with a reported lost item (${percent}% confidence).`,
+    message: `The item "${foundItem.title}" you found has a potential match with a reported lost item (${percent}% confidence).`,
     type: 'MATCH_FOUND',
-    linkUrl: `/item/${foundItem.id}?match=${lostItem.id}`
+    linkUrl: foundLink
   });
 }
 
@@ -53,7 +65,7 @@ function createClaimStatusNotification(db, claimantId, item, status, notes) {
   createNotification(db, {
     userId: claimantId,
     title: isApproved ? '🎉 Claim Approved!' : '⚠️ Claim Update',
-    message: isApproved 
+    message: isApproved
       ? `Your claim for "${item.title}" was approved by the campus admin! Visit the designated pickup location to collect it.`
       : `Your claim for "${item.title}" was rejected. Note: ${notes || 'Verification criteria could not be established.'}`,
     type: isApproved ? 'CLAIM_APPROVED' : 'CLAIM_REJECTED',

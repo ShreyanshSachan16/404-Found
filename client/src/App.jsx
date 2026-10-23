@@ -144,7 +144,7 @@ function AppContent() {
               </span>
             </div>
             <p style={{ fontSize: '0.825rem', color: 'var(--color-muted)', margin: 0 }}>
-              Not found? We'll find it. Intelligent campus recovery with multi-signal neural matching.
+              Not found? We'll find it. Campus recovery platform with multi-signal correlation matching.
             </p>
           </div>
 

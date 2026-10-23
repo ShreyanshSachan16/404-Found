@@ -22,7 +22,12 @@ uploads/receipts/*
 .env
 .env.*
 !.env.example
+.jwt_secret*
+*.key
+*.secret
 
-# Logs
+# Logs & locks
 logs/
 *.log
+*.lock
+.launch.lock

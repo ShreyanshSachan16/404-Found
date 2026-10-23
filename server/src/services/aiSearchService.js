@@ -2,13 +2,13 @@ const config = require('../config');
 const { tokenize, calculateTextSimilarity } = require('./aiMatchingService');
 
 const KNOWN_COLORS = [
-  'black', 'white', 'silver', 'grey', 'gray', 'red', 'blue', 'navy', 'green', 
+  'black', 'white', 'silver', 'grey', 'gray', 'red', 'blue', 'navy', 'green',
   'yellow', 'gold', 'purple', 'pink', 'orange', 'brown', 'beige', 'tan'
 ];
 
 const KNOWN_BRANDS = [
-  'apple', 'nike', 'adidas', 'samsung', 'sony', 'casio', 'hydro flask', 'yeti', 
-  'dell', 'lenovo', 'hp', 'patagonia', 'north face', 'herschel', 'stanley', 
+  'apple', 'nike', 'adidas', 'samsung', 'sony', 'casio', 'hydro flask', 'yeti',
+  'dell', 'lenovo', 'hp', 'patagonia', 'north face', 'herschel', 'stanley',
   'bose', 'anker', 'jbl', 'ray-ban', 'gucci', 'coach', 'louis vuitton', 'timberland'
 ];
 
@@ -62,9 +62,10 @@ function parseNaturalLanguageQuery(queryText) {
     }
   }
 
-  // Extract brand
+  // Extract brand with word boundaries to avoid false positives (e.g. 'hp' in 'headphones')
   for (const b of KNOWN_BRANDS) {
-    if (text.includes(b)) {
+    const regex = new RegExp(`\\b${b.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(text)) {
       extracted.brand = b;
       break;
     }
@@ -88,7 +89,7 @@ function parseNaturalLanguageQuery(queryText) {
     const locLower = loc.toLowerCase();
     const parts = locLower.split(/[\/\s]+/);
     for (const part of parts) {
-      if (part.length > 3 && text.includes(part)) {
+      if (part.length > 3 && new RegExp(`\\b${part}\\b`, 'i').test(text)) {
         extracted.location = loc;
         break;
       }
@@ -120,32 +121,38 @@ function semanticSearchItems(db, queryText, filters = {}) {
   const parsed = parseNaturalLanguageQuery(queryText);
   const { extracted } = parsed;
 
-  let query = "SELECT * FROM items WHERE status NOT IN ('ARCHIVED', 'CLOSED')";
+  let query = `
+    SELECT i.*, u.full_name as reporter_name, u.role as reporter_role
+    FROM items i
+    JOIN users u ON i.user_id = u.id
+    WHERE i.status NOT IN ('ARCHIVED', 'CLOSED')
+  `;
   const params = [];
 
   // Apply explicit UI filters if provided
   if (filters.type) {
-    query += ' AND type = ?';
+    query += ' AND i.type = ?';
     params.push(filters.type);
-  } else if (extracted.type && !filters.ignoreQueryType) {
-    // If the user says "I lost my backpack", show found items that match it or lost items
-    // depending on user perspective. By default if searching for what they lost, they want to browse found items!
-    // But let's keep all or match specifically if specified.
   }
 
   if (filters.category) {
-    query += ' AND category = ?';
+    query += ' AND i.category = ?';
     params.push(filters.category);
   }
 
   if (filters.location) {
-    query += ' AND location = ?';
+    query += ' AND i.location = ?';
     params.push(filters.location);
   }
 
   if (filters.status) {
-    query += ' AND status = ?';
+    query += ' AND i.status = ?';
     params.push(filters.status);
+  }
+
+  if (filters.brand) {
+    query += ' AND LOWER(i.brand) LIKE ?';
+    params.push(`%${filters.brand.toLowerCase()}%`);
   }
 
   const items = db.prepare(query).all(...params);

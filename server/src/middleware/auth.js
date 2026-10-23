@@ -10,6 +10,11 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: 'Access token required. Please log in.' });
   }
 
+  const isRevoked = db.prepare('SELECT 1 FROM revoked_tokens WHERE token = ?').get(token);
+  if (isRevoked) {
+    return res.status(401).json({ error: 'Session has been invalidated by logout. Please log in again.' });
+  }
+
   jwt.verify(token, config.JWT_SECRET, (err, decoded) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired session. Please log in again.' });
@@ -26,6 +31,7 @@ function authenticateToken(req, res, next) {
     }
 
     req.user = user;
+    req.token = token;
     next();
   });
 }
@@ -35,6 +41,12 @@ function optionalAuth(req, res, next) {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  const isRevoked = db.prepare('SELECT 1 FROM revoked_tokens WHERE token = ?').get(token);
+  if (isRevoked) {
     req.user = null;
     return next();
   }

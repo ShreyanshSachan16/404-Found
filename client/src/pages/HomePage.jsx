@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  PlusCircle, 
-  ArrowRight, 
-  MapPin, 
-  Clock, 
-  CheckCircle2, 
-  Layers, 
+import {
+  Search,
+  PlusCircle,
+  ArrowRight,
+  MapPin,
+  Clock,
+  CheckCircle2,
+  Layers,
   Zap,
   ShieldCheck,
   Eye,
@@ -17,23 +17,135 @@ import {
   Cpu
 } from 'lucide-react';
 
+function extractClientNLP(query) {
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return {
+      object: 'Any Item',
+      color: 'All Colors',
+      location: 'All Zones',
+      timing: 'Active Ledger'
+    };
+  }
+
+  // Clean punctuation while preserving alphanumeric words and spaces
+  const clean = query.toLowerCase().replace(/[^\w\s-]/g, ' ');
+
+  // 1. Color extraction with word boundary checks
+  const colors = [
+    'black', 'blue', 'navy', 'red', 'green', 'white', 'silver',
+    'grey', 'gray', 'charcoal', 'yellow', 'gold', 'purple',
+    'pink', 'orange', 'brown', 'beige', 'tan', 'cream'
+  ];
+  let foundColor = null;
+  for (const c of colors) {
+    if (new RegExp(`\\b${c}\\b`, 'i').test(clean)) {
+      foundColor = c;
+      break;
+    }
+  }
+
+  // 2. Compound objects and synonyms (order: most specific phrases first)
+  const compoundObjects = [
+    { pattern: /\b(hydro\s*flask|water\s*bottle|flask|tumbler|thermos)\b/i, name: 'Water Bottle' },
+    { pattern: /\b(macbook\s*air|macbook\s*pro|macbook|laptop|notebook\s*computer)\b/i, name: 'Laptop' },
+    { pattern: /\b(airpods\s*pro|airpods|earbuds|headphones|earphones)\b/i, name: 'Earbuds / AirPods' },
+    { pattern: /\b(student\s*id|campus\s*card|id\s*card|badge)\b/i, name: 'Student ID' },
+    { pattern: /\b(iphone|smartphone|cellphone|mobile\s*phone|phone)\b/i, name: 'Phone' },
+    { pattern: /\b(backpack|rucksack|bookbag|knapsack|duffel|tote\s*bag|bag)\b/i, name: 'Backpack' },
+    { pattern: /\b(calculator|scientific\s*calculator)\b/i, name: 'Calculator' },
+    { pattern: /\b(keys|keychain|car\s*key|fob|key\s*fob)\b/i, name: 'Keys' },
+    { pattern: /\b(wallet|purse|billfold|clutch)\b/i, name: 'Wallet' },
+    { pattern: /\b(jacket|hoodie|coat|sweater|sweatshirt)\b/i, name: 'Clothing' },
+    { pattern: /\b(charger|charging\s*cable|power\s*adapter)\b/i, name: 'Charger' },
+    { pattern: /\b(glasses|sunglasses|spectacles|frames)\b/i, name: 'Eyewear' },
+    { pattern: /\b(umbrella)\b/i, name: 'Umbrella' },
+    { pattern: /\b(smartwatch|watch|apple\s*watch)\b/i, name: 'Watch' }
+  ];
+
+  let foundObjectName = null;
+  for (const entry of compoundObjects) {
+    if (entry.pattern.test(clean)) {
+      foundObjectName = entry.name;
+      break;
+    }
+  }
+
+  // 3. Location extraction
+  const locationPatterns = [
+    { pattern: /\b(main\s*library|library|study\s*pods?)\b/i, name: 'Main Library' },
+    { pattern: /\b(student\s*union|cafeteria|canteen|dining)\b/i, name: 'Student Union / Cafeteria' },
+    { pattern: /\b(gym|athletics|fitness|sports\s*center)\b/i, name: 'Athletics Center / Gym' },
+    { pattern: /\b(science|engineering|lab|complex)\b/i, name: 'Science & Engineering Complex' },
+    { pattern: /\b(lecture\s*hall|central\s*lecture|auditorium)\b/i, name: 'Central Lecture Hall' },
+    { pattern: /\b(bookstore|campus\s*store)\b/i, name: 'Campus Bookstore' },
+    { pattern: /\b(dorm|dormitories|quad|residence)\b/i, name: 'Campus Dormitories' },
+    { pattern: /\b(parking|garage)\b/i, name: 'Parking Structure' }
+  ];
+
+  let foundLocationName = null;
+  for (const entry of locationPatterns) {
+    if (entry.pattern.test(clean)) {
+      foundLocationName = entry.name;
+      break;
+    }
+  }
+
+  // 4. Fallback for object: only pick residual query tokens that were NOT part of color or location
+  if (!foundObjectName) {
+    const stopwords = new Set([
+      'near', 'in', 'at', 'the', 'a', 'an', 'on', 'with', 'and', 'or',
+      'for', 'to', 'from', 'my', 'i', 'lost', 'found', 'is', 'it', 'floor'
+    ]);
+    const words = clean.trim().split(/\s+/).filter(w => {
+      const lower = w.toLowerCase();
+      if (stopwords.has(lower)) return false;
+      if (foundColor && lower === foundColor) return false;
+      if (foundLocationName && foundLocationName.toLowerCase().includes(lower)) return false;
+      return lower.length > 2;
+    });
+
+    if (words.length > 0) {
+      foundObjectName = words[0].charAt(0).toUpperCase() + words[0].slice(1);
+    } else {
+      foundObjectName = 'Any Item';
+    }
+  }
+
+  return {
+    object: foundObjectName,
+    color: foundColor ? (foundColor.charAt(0).toUpperCase() + foundColor.slice(1)) : 'All Colors',
+    location: foundLocationName || 'Campus Wide',
+    timing: 'Live Index'
+  };
+}
+
 export function HomePage({ onNavigate, onSearchQuery }) {
   const [nlQuery, setNlQuery] = useState('black backpack near library');
   const [recentItems, setRecentItems] = useState([]);
   const [activeChip, setActiveChip] = useState('Black backpack');
-
-  // Interactive Match Animation State
-  const [simulatedMatchScore, setSimulatedMatchScore] = useState(94);
   const [scanningActive, setScanningActive] = useState(false);
+  const [stats, setStats] = useState({
+    returnedItems: 0,
+    activeItems: 0,
+    resolutionRate: 0,
+    totalItems: 0
+  });
 
   useEffect(() => {
-    fetch('/api/items?limit=6')
-      .then(res => res.json())
-      .then(data => {
-        setRecentItems(data.items || []);
+    Promise.all([
+      fetch('/api/items?limit=6').then(res => res.json()),
+      fetch('/api/items/stats').then(res => res.json()).catch(() => null)
+    ])
+      .then(([itemsData, statsData]) => {
+        setRecentItems(itemsData.items || []);
+        if (statsData) {
+          setStats(statsData);
+        }
       })
       .catch(err => console.error(err));
   }, []);
+
+  const nlpParams = extractClientNLP(nlQuery);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -53,20 +165,20 @@ export function HomePage({ onNavigate, onSearchQuery }) {
   return (
     <div style={{ paddingTop: '1.25rem' }}>
       <div className="content-wrapper" style={{ maxWidth: '980px' }}>
-        
-        {/* 1. Live Campus Recovery Activity Ribbon (From Stitch) */}
+
+        {/* 1. Live Campus Recovery Activity Ribbon */}
         <section style={{ marginBottom: '1.5rem' }}>
-          <div 
-            style={{ 
+          <div
+            style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              backgroundColor: 'var(--color-surface-low)', padding: '0.65rem 1rem', 
-              borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' 
+              backgroundColor: 'var(--color-surface-low)', padding: '0.65rem 1rem',
+              borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
               <span className="pulse-dot-amber" style={{ width: '8px', height: '8px' }}></span>
               <p style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--color-muted)', margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                <span style={{ color: 'var(--color-ivory)', fontWeight: 600 }}>24 items returned</span> this week &bull; 91.4% resolution rate
+                <span style={{ color: 'var(--color-ivory)', fontWeight: 600 }}>{stats.returnedItems || 0} items returned</span> &bull; {stats.resolutionRate || 0}% resolution rate &bull; {stats.activeItems || recentItems.length} active in ledger
               </p>
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '10px', color: 'var(--color-success)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
@@ -79,11 +191,11 @@ export function HomePage({ onNavigate, onSearchQuery }) {
         {/* 2. Hero Section: Editorial Typography & Dual Actions */}
         <section style={{ marginBottom: '2.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Eyebrow Pill */}
-          <div 
-            style={{ 
-              alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', 
+          <div
+            style={{
+              alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
               padding: '0.3rem 0.75rem', borderRadius: 'var(--radius-full)', backgroundColor: 'var(--color-surface-container)',
-              border: '1px solid var(--color-border)' 
+              border: '1px solid var(--color-border)'
             }}
           >
             <span className="pulse-dot-amber" style={{ width: '6px', height: '6px' }}></span>
@@ -105,8 +217,8 @@ export function HomePage({ onNavigate, onSearchQuery }) {
 
           {/* Dual Primary & Secondary Action Set */}
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', paddingTop: '0.35rem' }}>
-            <button 
-              className="btn btn-beacon btn-lg" 
+            <button
+              className="btn btn-beacon btn-lg"
               style={{ flex: '1 1 240px', justifyContent: 'space-between' }}
               onClick={() => onNavigate('report-lost')}
             >
@@ -117,8 +229,8 @@ export function HomePage({ onNavigate, onSearchQuery }) {
               <ArrowRight size={18} />
             </button>
 
-            <button 
-              className="btn btn-surface btn-lg" 
+            <button
+              className="btn btn-surface btn-lg"
               style={{ flex: '1 1 240px', justifyContent: 'space-between' }}
               onClick={() => onNavigate('browse')}
             >
@@ -147,11 +259,11 @@ export function HomePage({ onNavigate, onSearchQuery }) {
           <div className="terminal-card" style={{ padding: '0.85rem', backgroundColor: 'var(--color-surface-container)' }}>
             <form onSubmit={handleSearchSubmit} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
               <Search size={18} style={{ color: 'var(--color-amber)', flexShrink: 0 }} />
-              <input 
-                type="text" 
-                className="form-input" 
-                style={{ border: 'none', background: 'transparent', padding: '0.35rem 0', fontSize: '0.95rem' }} 
-                placeholder="Ask in natural language: e.g. blue Hydro Flask at gym..." 
+              <input
+                type="text"
+                className="form-input"
+                style={{ border: 'none', background: 'transparent', padding: '0.35rem 0', fontSize: '0.95rem' }}
+                placeholder="Ask in natural language: e.g. blue Hydro Flask at gym..."
                 value={nlQuery}
                 onChange={(e) => setNlQuery(e.target.value)}
               />
@@ -187,43 +299,43 @@ export function HomePage({ onNavigate, onSearchQuery }) {
             </div>
           </div>
 
-          {/* Extracted Semantic Preview Card */}
+          {/* Extracted Search Filter Card */}
           <div style={{ backgroundColor: 'var(--color-surface-lowest)', borderRadius: 'var(--radius-md)', padding: '0.85rem', border: '1px solid var(--color-border-subtle)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <Zap size={12} style={{ color: 'var(--color-amber)' }} />
-                Extracted Semantic Parameters
+                Extracted Search Filters
               </span>
-              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-success)' }}>Parsed in 18ms</span>
+              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-muted)' }}>Deterministic Query Parser</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.5rem' }}>
               <div style={{ backgroundColor: 'var(--color-surface-low)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                 <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'block' }}>OBJECT</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Backpack</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>{nlpParams.object}</span>
               </div>
               <div style={{ backgroundColor: 'var(--color-surface-low)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                 <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'block' }}>COLOR SPEC</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Matte Black</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>{nlpParams.color}</span>
               </div>
               <div style={{ backgroundColor: 'var(--color-surface-low)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
                 <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'block' }}>LOCATION PIN</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Main Library</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>{nlpParams.location}</span>
               </div>
               <div style={{ backgroundColor: 'var(--color-surface-low)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'block' }}>TIMESTAMP</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Yesterday 16:00</span>
+                <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--color-outline)', textTransform: 'uppercase', display: 'block' }}>INDEX STATUS</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-ivory)' }}>{nlpParams.timing}</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 4. Interactive AI Match Verification Showcase (Directly from Stitch) */}
+        {/* 4. Interactive Match Verification Showcase */}
         <section style={{ marginBottom: '3.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Active Neural Correlation</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>Live cross-campus telemetry handshake</p>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--color-ivory)' }}>Active Correlation Pipeline</h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>Live multi-signal match verification</p>
             </div>
             <span className="badge badge-match" style={{ padding: '0.2rem 0.6rem' }}>
               <span className="pulse-dot-amber" style={{ width: '5px', height: '5px' }}></span>
@@ -313,8 +425,8 @@ export function HomePage({ onNavigate, onSearchQuery }) {
               </div>
             </div>
 
-            <button 
-              className="btn btn-secondary btn-sm" 
+            <button
+              className="btn btn-secondary btn-sm"
               style={{ width: '100%', marginTop: '0.65rem', justifyContent: 'center' }}
               onClick={() => onNavigate('browse')}
             >
