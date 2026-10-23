@@ -11,10 +11,16 @@ if (!fs.existsSync(dbDir)) {
 if (!fs.existsSync(config.UPLOAD_DIR)) {
   fs.mkdirSync(config.UPLOAD_DIR, { recursive: true });
 }
+if (!fs.existsSync(config.RECEIPTS_DIR)) {
+  fs.mkdirSync(config.RECEIPTS_DIR, { recursive: true });
+}
 
 const db = new Database(config.DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
+db.pragma('cache_size = -64000');
 
 function initSchema() {
   db.exec(`
@@ -159,10 +165,20 @@ function initSchema() {
       FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    -- Invalidation table for revoked tokens on logout
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      token TEXT PRIMARY KEY,
+      revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Indexes for high performance queries
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
     CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+    CREATE INDEX IF NOT EXISTS idx_items_type_category ON items(type, category);
+    CREATE INDEX IF NOT EXISTS idx_items_type_status ON items(type, status);
+    CREATE INDEX IF NOT EXISTS idx_items_status_type ON items(status, type);
+    CREATE INDEX IF NOT EXISTS idx_items_brand ON items(brand);
     CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id);
     CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_matches_lost ON matches(lost_item_id);
@@ -173,6 +189,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
     CREATE INDEX IF NOT EXISTS idx_messages_item ON messages(item_id);
+    CREATE INDEX IF NOT EXISTS idx_revoked_tokens ON revoked_tokens(token);
   `);
 }
 

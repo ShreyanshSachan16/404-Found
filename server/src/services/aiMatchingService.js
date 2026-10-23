@@ -212,10 +212,13 @@ function calculateCategorySimilarity(catA, catB) {
 }
 
 /**
- * Simulated/Extracted visual perceptual feature similarity
+ * Calculate image similarity using stored feature vectors (byte-distribution histogram + color heuristic)
+ * or fallback visual attribute correlation.
+ * NOTE: This is a deterministic heuristic comparing byte-level distributions and declared color traits;
+ * it is not a deep neural network or semantic computer-vision model.
  */
 function calculateImageSimilarity(itemA, itemB) {
-  // If image feature vectors are stored (e.g. JSON array of color histograms / embeddings)
+  // If image feature vectors are stored (JSON array of byte histograms + color flags)
   if (itemA.image_features && itemB.image_features) {
     try {
       const featA = typeof itemA.image_features === 'string' ? JSON.parse(itemA.image_features) : itemA.image_features;
@@ -338,6 +341,10 @@ function runMatchingPipeline(db, itemId, notificationService) {
       updated_at = CURRENT_TIMESTAMP
   `);
 
+  const updateItemStatus = db.prepare("UPDATE items SET status = 'POTENTIAL_MATCH' WHERE id = ?");
+
+  const matchesToSave = [];
+
   for (const candidate of candidates) {
     const lostItem = currentItem.type === 'lost' ? currentItem : candidate;
     const foundItem = currentItem.type === 'found' ? currentItem : candidate;
@@ -345,33 +352,49 @@ function runMatchingPipeline(db, itemId, notificationService) {
     const breakdown = calculateItemMatch(lostItem, foundItem);
 
     if (breakdown.overallScore >= minThreshold) {
-      insertOrUpdateMatch.run(
-        lostItem.id,
-        foundItem.id,
-        breakdown.overallScore,
-        breakdown.textScore,
-        breakdown.imageScore,
-        breakdown.locationScore,
-        breakdown.dateScore,
-        breakdown.categoryScore
-      );
+      matchesToSave.push({
+        lostItem,
+        foundItem,
+        breakdown,
+        candidate
+      });
+    }
+  }
 
-      // If status is LOST or FOUND, bump to POTENTIAL_MATCH
-      if (lostItem.status === 'LOST') {
-        db.prepare("UPDATE items SET status = 'POTENTIAL_MATCH' WHERE id = ?").run(lostItem.id);
-      }
-      if (foundItem.status === 'FOUND') {
-        db.prepare("UPDATE items SET status = 'POTENTIAL_MATCH' WHERE id = ?").run(foundItem.id);
-      }
+  if (matchesToSave.length > 0) {
+    const saveMatchesTx = db.transaction((items) => {
+      for (const m of items) {
+        insertOrUpdateMatch.run(
+          m.lostItem.id,
+          m.foundItem.id,
+          m.breakdown.overallScore,
+          m.breakdown.textScore,
+          m.breakdown.imageScore,
+          m.breakdown.locationScore,
+          m.breakdown.dateScore,
+          m.breakdown.categoryScore
+        );
 
-      // Notify the owner of the lost item and finder
+        if (m.lostItem.status === 'LOST') {
+          updateItemStatus.run(m.lostItem.id);
+          m.lostItem.status = 'POTENTIAL_MATCH';
+        }
+        if (m.foundItem.status === 'FOUND') {
+          updateItemStatus.run(m.foundItem.id);
+          m.foundItem.status = 'POTENTIAL_MATCH';
+        }
+      }
+    });
+
+    saveMatchesTx(matchesToSave);
+
+    for (const m of matchesToSave) {
       if (notificationService) {
-        notificationService.createMatchNotification(db, lostItem, foundItem, breakdown.overallScore);
+        notificationService.createMatchNotification(db, m.lostItem, m.foundItem, m.breakdown.overallScore);
       }
-
       results.push({
-        candidate,
-        breakdown
+        candidate: m.candidate,
+        breakdown: m.breakdown
       });
     }
   }

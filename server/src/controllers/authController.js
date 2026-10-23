@@ -6,7 +6,17 @@ const config = require('../config');
 // Registration
 exports.register = async (req, res) => {
   try {
-    const { email, password, full_name, student_id, phone, department, role } = req.body;
+    const { email, password, full_name, student_id, phone, department, role, confirm_password, confirmPassword } = req.body;
+
+    // Defense-in-depth: if client passed confirmation field, ensure it matches
+    const confirmation = confirmPassword || confirm_password;
+    if (confirmation !== undefined && confirmation !== password) {
+      return res.status(400).json({ error: 'Passwords do not match. Please ensure both passwords match exactly.' });
+    }
+
+    // Immediately purge confirmation fields from memory
+    delete req.body.confirmPassword;
+    delete req.body.confirm_password;
 
     if (!email || !password || !full_name) {
       return res.status(400).json({ error: 'Please provide full name, email, and password.' });
@@ -138,7 +148,7 @@ exports.updateProfile = (req, res) => {
     const { full_name, phone, department, student_id } = req.body;
 
     db.prepare(`
-      UPDATE users 
+      UPDATE users
       SET full_name = COALESCE(?, full_name),
           phone = COALESCE(?, phone),
           department = COALESCE(?, department),
@@ -156,5 +166,20 @@ exports.updateProfile = (req, res) => {
   } catch (err) {
     console.error('Update profile error:', err);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+};
+
+// Logout (token invalidation)
+exports.logout = (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = req.token || (authHeader && authHeader.split(' ')[1]);
+    if (token) {
+      db.prepare('INSERT OR IGNORE INTO revoked_tokens (token) VALUES (?)').run(token);
+    }
+    res.json({ message: 'Session logged out and invalidated successfully.' });
+  } catch (err) {
+    console.error('Logout error:', err);
+    res.status(500).json({ error: 'Failed to process logout.' });
   }
 };

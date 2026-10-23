@@ -23,6 +23,9 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
   const [loading, setLoading] = useState(true);
   const [nlpInsights, setNlpInsights] = useState(null);
   const [meta, setMeta] = useState({ categories: [], locations: [] });
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     fetch('/api/meta')
@@ -31,7 +34,7 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
       .catch(err => console.error(err));
   }, []);
 
-  const fetchItems = () => {
+  const fetchItems = (pageNum = page) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (query.trim()) params.set('q', query.trim());
@@ -40,11 +43,15 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
     if (locationFilter) params.set('location', locationFilter);
     if (statusFilter) params.set('status', statusFilter);
     if (sortFilter) params.set('sort', sortFilter);
+    params.set('page', pageNum);
+    params.set('limit', 15);
 
     fetch(`/api/items?${params.toString()}`)
       .then(res => res.json())
       .then(data => {
         setItems(data.items || []);
+        setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
         setNlpInsights(data.nlpInsights || null);
       })
       .catch(err => console.error('Failed to fetch items:', err))
@@ -52,12 +59,19 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
   };
 
   useEffect(() => {
-    fetchItems();
+    setPage(1);
+    fetchItems(1);
   }, [typeFilter, categoryFilter, locationFilter, statusFilter, sortFilter]);
+
+  const handlePageChange = (newPage) => {
+    setPage(newPage);
+    fetchItems(newPage);
+  };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    fetchItems();
+    setPage(1);
+    fetchItems(1);
   };
 
   const handleClearFilters = () => {
@@ -82,7 +96,7 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
                 Find an item
               </h1>
               <p style={{ fontSize: '0.8rem', color: 'var(--color-muted)', fontFamily: 'var(--font-mono)', marginTop: '0.15rem' }}>
-                {items.length} active campus recovery ledger records
+                {total} active campus recovery ledger records {totalPages > 1 ? `• Page ${page} of ${totalPages}` : ''}
               </p>
             </div>
 
@@ -262,7 +276,7 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
                       {isHighMatch && (
                         <span className="badge badge-match">
                           <span className="pulse-dot-amber" style={{ width: '4px', height: '4px' }}></span>
-                          94% MATCH
+                          {item.relevanceScore ? `${Math.round(item.relevanceScore * 100)}% RELEVANCE` : 'POTENTIAL MATCH'}
                         </span>
                       )}
                       <span className="badge badge-pending" style={{ fontSize: '9px' }}>
@@ -320,6 +334,33 @@ export function BrowsePage({ initialQuery = '', onSelectItem, onNavigateReport }
                 </article>
               );
             })}
+
+            {/* Pagination Navigation */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', marginTop: '1.25rem', padding: '1rem 0' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={page <= 1}
+                  onClick={() => handlePageChange(Math.max(1, page - 1))}
+                  style={{ opacity: page <= 1 ? 0.4 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+                >
+                  Previous Page
+                </button>
+                <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--color-muted)' }}>
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={page >= totalPages}
+                  onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
+                  style={{ opacity: page >= totalPages ? 0.4 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
+                >
+                  Next Page
+                </button>
+              </div>
+            )}
           </div>
         )}
 

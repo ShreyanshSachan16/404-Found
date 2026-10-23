@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { Lock, Mail, User, Shield, X, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, User, Shield, X, ShieldCheck, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export function AuthModal({ isOpen, onClose }) {
   const { login, register, isDemoEnabled, switchDemoUser } = useAuth();
@@ -9,18 +9,48 @@ export function AuthModal({ isOpen, onClose }) {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [studentId, setStudentId] = useState('');
   const [department, setDepartment] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmError, setConfirmError] = useState('');
 
   if (!isOpen) return null;
 
+  const handleToggleMode = (registerMode) => {
+    setIsRegister(registerMode);
+    setError('');
+    setConfirmError('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    setConfirmError('');
+
+    if (isRegister) {
+      if (!password || password.length < 8) {
+        setError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (!confirmPassword) {
+        setConfirmError('Please confirm your password.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setConfirmError('Passwords do not match. Please ensure both passwords match exactly.');
+        return;
+      }
+    }
+
+    setLoading(true);
 
     try {
       if (isRegister) {
@@ -167,16 +197,115 @@ export function AuthModal({ isOpen, onClose }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              required
-              className="form-input"
-              placeholder="Min 6 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <label className="form-label" htmlFor="auth-password">Password</label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                id="auth-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                className="form-input"
+                style={{ paddingRight: '2.5rem' }}
+                placeholder="At least 8 characters"
+                aria-describedby={isRegister ? 'password-requirements' : undefined}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (confirmPassword) {
+                    if (e.target.value !== confirmPassword) {
+                      setConfirmError('Passwords do not match.');
+                    } else {
+                      setConfirmError('');
+                    }
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(prev => !prev)}
+                style={{
+                  position: 'absolute',
+                  right: '0.65rem',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px'
+                }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {isRegister && (
+              <p id="password-requirements" style={{ fontSize: '0.72rem', color: password.length >= 8 ? 'var(--color-success)' : 'var(--color-muted)', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {password.length >= 8 && <CheckCircle2 size={12} />}
+                Password requirement: Minimum 8 characters.
+              </p>
+            )}
           </div>
+
+          {isRegister && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="auth-confirm-password">Confirm Password</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  id="auth-confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  className="form-input"
+                  style={{
+                    paddingRight: '2.5rem',
+                    borderColor: (confirmError || (confirmPassword && password !== confirmPassword))
+                      ? 'var(--color-error)'
+                      : (confirmPassword && password === confirmPassword ? 'var(--color-success)' : undefined)
+                  }}
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfirmPassword(val);
+                    if (val && password && val !== password) {
+                      setConfirmError('Passwords do not match.');
+                    } else {
+                      setConfirmError('');
+                    }
+                  }}
+                  aria-invalid={!!confirmError || (!!confirmPassword && password !== confirmPassword)}
+                  aria-describedby={confirmError ? 'confirm-password-error' : (confirmPassword && password === confirmPassword ? 'confirm-password-success' : undefined)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(prev => !prev)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.65rem',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '4px'
+                  }}
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {confirmError && (
+                <p id="confirm-password-error" role="alert" style={{ color: 'var(--color-error)', fontSize: '0.75rem', marginTop: '0.3rem' }}>
+                  {confirmError}
+                </p>
+              )}
+              {!confirmError && confirmPassword && password === confirmPassword && (
+                <p id="confirm-password-success" style={{ color: 'var(--color-success)', fontSize: '0.72rem', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <CheckCircle2 size={12} /> Passwords match
+                </p>
+              )}
+            </div>
+          )}
 
           <button type="submit" className="btn btn-beacon" style={{ width: '100%', marginTop: '0.4rem' }} disabled={loading}>
             {loading ? 'Authenticating...' : (isRegister ? 'Register Identity' : 'Authenticate')}
@@ -189,7 +318,7 @@ export function AuthModal({ isOpen, onClose }) {
               Already verified?{' '}
               <button
                 type="button"
-                onClick={() => setIsRegister(false)}
+                onClick={() => handleToggleMode(false)}
                 style={{ background: 'none', border: 'none', color: 'var(--color-amber)', fontWeight: 600, cursor: 'pointer' }}
               >
                 Sign In
@@ -200,7 +329,7 @@ export function AuthModal({ isOpen, onClose }) {
               New to the campus network?{' '}
               <button
                 type="button"
-                onClick={() => setIsRegister(true)}
+                onClick={() => handleToggleMode(true)}
                 style={{ background: 'none', border: 'none', color: 'var(--color-amber)', fontWeight: 600, cursor: 'pointer' }}
               >
                 Register

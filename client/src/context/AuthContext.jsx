@@ -77,6 +77,12 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => {});
+    }
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');

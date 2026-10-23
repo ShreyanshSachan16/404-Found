@@ -244,7 +244,11 @@ async function seed() {
   console.log('  Student: sarah.jenkins@campus.edu / Password123!');
 }
 
-seed().catch(err => {
-  console.error('Seeding failed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  seed().catch(err => {
+    console.error('Seeding failed:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { seed };

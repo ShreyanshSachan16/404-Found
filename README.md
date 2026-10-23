@@ -143,10 +143,10 @@ npm run start:prod
 
 ## 🧪 Testing & Verification
 
-The project includes end-to-end integration test suites and security audit checks. The automated test runner automatically checks whether the server is running; if not, it temporarily spins up a local test instance, runs the checks, and shuts down cleanly.
+The project includes an isolated automated test harness and browser end-to-end verification. All automated tests execute in an ephemeral sandbox in `os.tmpdir()` with a dedicated test port (5095) and never touch the live workspace database.
 
 ```bash
-# Run both test suites (29 automated checks total)
+# Run all 3 isolated test suites (45 automated checks total)
 npm test
 
 # Run only the 13 core lifecycle & AI matching tests
@@ -155,7 +155,13 @@ npm run test:flow
 # Run only the 16 security, rate-limiting, and privacy audit checks
 npm run test:audit
 
-# Run client linter (Oxlint)
+# Run only the 16 security hardening & regression checks
+npm run test:security
+
+# Run browser-based end-to-end automated verification (requires Edge or Chrome)
+npm run test:e2e
+
+# Run client linter
 npm run lint
 ```
 
@@ -163,7 +169,7 @@ npm run lint
 
 ## 👥 Demo Accounts (Seed Data)
 
-The system includes pre-seeded demo campus accounts with the shared password **`Password123!`**:
+The development database includes pre-seeded demo campus accounts with the shared development password **`Password123!`**:
 
 | Role | Name | Email | Password | Details |
 |------|------|-------|----------|---------|
@@ -171,8 +177,25 @@ The system includes pre-seeded demo campus accounts with the shared password **`
 | **Student** | Alex Chen | `alex.chen@campus.edu` | `Password123!` | Reporter of lost Nike backpack (active AI match) |
 | **Student** | Sarah Jenkins | `sarah.jenkins@campus.edu` | `Password123!` | Reporter of found Nike backpack (with active claim) |
 | **Student** | Marcus Williams | `marcus.williams@campus.edu` | `Password123!` | Engineering student (lost Casio calculator) |
+| **Student** | Emma Watson | `emma.watson@campus.edu` | `Password123!` | Business student (found Casio calculator, lost AirPods) |
 
-> 💡 **Quick Role Switcher**: Click the **Demo Role** button in the navigation bar to switch between user accounts instantly.
+> ⚠️ **Security Notice**: These credentials are strictly for local testing and developer onboarding. Production instances must use strong, unique passwords or institutional Single Sign-On (SSO / SAML).
+
+---
+
+## 🔍 Technical Scope, Limitations & Handoff Notes
+
+### Visual Matching Engine Scope
+- **Current Heuristic**: The current image similarity subsystem calculates a 16-bin byte-distribution histogram over the image file coupled with declared color trait flags.
+- **Architectural Boundary**: This is a lightweight heuristic and **is not a deep neural network, convolutional vision model, or semantic embedding engine**. Two visually similar items with different compression levels or image formats will not be semantically recognized. A proper perceptual hashing (dHash/pHash) or vision model integration is proposed for a subsequent milestone.
+
+### Verification Status & Production Boundaries
+- **Automated Test Results**: The suite of 45 unit/integration tests and browser E2E workflows pass 100% in isolated temporary sandboxes.
+- **Production Readiness Disclaimer**: Passing automated sandbox tests demonstrates code path correctness but does **not** certify the software as production-ready. Real campus deployment requires:
+  1. Institutional authentication integration (SSO / LDAP / OAuth2).
+  2. Enterprise HTTPS/TLS certificate configuration with reverse-proxy termination (Nginx / Caddy).
+  3. External email / SMS delivery gateway configuration for urgent notifications.
+  4. Real-world concurrency and load testing under high student traffic.
 
 ---
 

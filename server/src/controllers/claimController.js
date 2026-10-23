@@ -28,7 +28,7 @@ exports.submitClaim = (req, res) => {
 
     // Check if user already has an active claim on this item
     const existingClaim = db.prepare(`
-      SELECT id, status FROM claims 
+      SELECT id, status FROM claims
       WHERE item_id = ? AND claimant_id = ? AND status != 'CANCELLED'
     `).get(item_id, req.user.id);
 
@@ -45,7 +45,7 @@ exports.submitClaim = (req, res) => {
 
     const insertClaim = db.prepare(`
       INSERT INTO claims (
-        item_id, claimant_id, proof_description, 
+        item_id, claimant_id, proof_description,
         hidden_marks_answers, secret_contents, receipt_image, status
       ) VALUES (?, ?, ?, ?, ?, ?, 'VERIFICATION_PENDING')
     `);
@@ -126,7 +126,16 @@ exports.reviewClaim = (req, res) => {
       // If rejected, check if there are other pending claims
       const otherClaims = db.prepare("SELECT id FROM claims WHERE item_id = ? AND status = 'VERIFICATION_PENDING' AND id != ?").all(claim.item_id, claimId);
       if (otherClaims.length === 0) {
-        db.prepare("UPDATE items SET status = 'FOUND', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(claim.item_id);
+        // Check if there are active candidate matches above threshold
+        const activeMatches = db.prepare(`
+          SELECT id FROM matches
+          WHERE (lost_item_id = ? OR found_item_id = ?)
+          AND status IN ('SUGGESTED', 'REVIEWED')
+          AND overall_score >= ?
+        `).all(claim.item_id, claim.item_id, config.AI_CONFIG.MIN_MATCH_THRESHOLD);
+
+        const restoredStatus = activeMatches.length > 0 ? 'POTENTIAL_MATCH' : (item.type === 'lost' ? 'LOST' : 'FOUND');
+        db.prepare("UPDATE items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(restoredStatus, claim.item_id);
       }
     }
 
@@ -171,6 +180,13 @@ exports.confirmReturn = (req, res) => {
     // Update approved claims to HANDED_OVER
     db.prepare("UPDATE claims SET status = 'HANDED_OVER', updated_at = CURRENT_TIMESTAMP WHERE item_id = ? AND status = 'APPROVED'").run(itemId);
 
+    // Cancel any other claims still pending on this item
+    db.prepare(`
+      UPDATE claims
+      SET status = 'CANCELLED', admin_notes = 'Item has been handed over to verified owner.', updated_at = CURRENT_TIMESTAMP
+      WHERE item_id = ? AND status = 'VERIFICATION_PENDING'
+    `).run(itemId);
+
     // Notify item reporter
     notificationService.createItemStatusNotification(db, item, 'RETURNED');
 
@@ -205,15 +221,26 @@ exports.getClaimReceipt = (req, res) => {
     }
 
     const filename = path.basename(claim.receipt_image);
-    let filePath = path.join(config.RECEIPTS_DIR, filename);
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(config.UPLOAD_DIR, filename);
+    const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!sanitized || sanitized === '.' || sanitized === '..') {
+      return res.status(400).json({ error: 'Invalid receipt file path.' });
     }
 
-    if (!fs.existsSync(filePath)) {
+    const targetReceipt = path.resolve(config.RECEIPTS_DIR, sanitized);
+    const targetUpload = path.resolve(config.UPLOAD_DIR, sanitized);
+    let filePath = null;
+    if (fs.existsSync(targetReceipt) && targetReceipt.startsWith(path.resolve(config.RECEIPTS_DIR))) {
+      filePath = targetReceipt;
+    } else if (fs.existsSync(targetUpload) && targetUpload.startsWith(path.resolve(config.UPLOAD_DIR))) {
+      filePath = targetUpload;
+    }
+
+    if (!filePath) {
       return res.status(404).json({ error: 'Receipt file not found on disk.' });
     }
 
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
     res.sendFile(filePath);
   } catch (err) {
     console.error('Get receipt error:', err);
@@ -227,9 +254,18 @@ exports.getReceiptByFilename = (req, res) => {
     const rawFilename = path.basename(req.params.filename);
     const sanitized = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '');
 
-    const claim = db.prepare('SELECT * FROM claims WHERE receipt_image LIKE ?').get(`%${sanitized}%`);
+    if (!sanitized || sanitized === '.' || sanitized === '..') {
+      return res.status(400).json({ error: 'Invalid filename provided.' });
+    }
+
+    // Exact matching to prevent SQL wildcard exploitation
+    const claim = db.prepare(`
+      SELECT * FROM claims
+      WHERE receipt_image = ? OR receipt_image = ?
+    `).get(`/api/claims/receipt-file/${sanitized}`, sanitized);
+
     if (!claim) {
-      // Check if user is admin
+      // Non-admins must never probe disk for unknown receipts
       if (req.user.role !== 'admin') {
         return res.status(404).json({ error: 'Receipt file not found or unauthorized.' });
       }
@@ -237,15 +273,21 @@ exports.getReceiptByFilename = (req, res) => {
       return res.status(403).json({ error: 'Access denied. You do not have permission to view this receipt.' });
     }
 
-    let filePath = path.join(config.RECEIPTS_DIR, sanitized);
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(config.UPLOAD_DIR, sanitized);
+    const targetReceipt = path.resolve(config.RECEIPTS_DIR, sanitized);
+    const targetUpload = path.resolve(config.UPLOAD_DIR, sanitized);
+    let filePath = null;
+    if (fs.existsSync(targetReceipt) && targetReceipt.startsWith(path.resolve(config.RECEIPTS_DIR))) {
+      filePath = targetReceipt;
+    } else if (fs.existsSync(targetUpload) && targetUpload.startsWith(path.resolve(config.UPLOAD_DIR))) {
+      filePath = targetUpload;
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath) {
       return res.status(404).json({ error: 'Receipt file not found on disk.' });
     }
 
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'");
     res.sendFile(filePath);
   } catch (err) {
     console.error('Get receipt by filename error:', err);

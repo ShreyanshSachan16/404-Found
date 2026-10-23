@@ -224,7 +224,7 @@ node scripts/restore.js backups/backup-2026-10-12T04-40-30-345Z.db
 
 ## 7. Cost, Dependencies & Limitations
 
-- **External AI API Costs**: **$0.00 / month**. The system utilizes an in-process, self-contained multi-signal neural matching and semantic TF-IDF NLP pipeline. No third-party LLM or vector database subscriptions (OpenAI, Pinecone, etc.) are needed.
+- **External AI API Costs**: **$0.00 / month**. The system utilizes an in-process, self-contained multi-signal correlation matching and keyword/TF-IDF token parser. No third-party LLM or vector database subscriptions (OpenAI, Pinecone, etc.) are needed.
 - **Compute Requirements**: Very low footprint. Runs smoothly on a basic 1 vCPU / 1GB RAM virtual server ($5–$6/month on Hetzner, DigitalOcean, or Linode).
 - **Storage**: ~5GB SSD volume recommended to store photo uploads and SQLite database.
 - **Email/SMS Relay (Optional Future Enhancement)**: In-app notifications are natively supported out of the box. If campus-wide SMTP or Twilio SMS alerts are desired, configure standard Node.js nodemailer or webhook transports.

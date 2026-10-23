@@ -7,12 +7,14 @@
     "start": "node src/index.js",
     "seed": "node src/db/seed.js",
     "dev": "node src/index.js",
-    "test": "node test-flow.js",
-    "test:flow": "node test-flow.js",
-    "test:audit": "node test-production-audit.js",
-    "test:all": "node test-flow.js && node test-production-audit.js",
+    "test": "node ../scripts/test-runner.js",
+    "test:flow": "node ../scripts/test-runner.js flow",
+    "test:audit": "node ../scripts/test-runner.js audit",
+    "test:security": "node ../scripts/test-runner.js security",
+    "test:all": "node ../scripts/test-runner.js all",
     "backup": "node scripts/backup.js",
-    "restore": "node scripts/restore.js"
+    "restore": "node scripts/restore.js",
+    "migrate:data": "node scripts/migrate-data.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

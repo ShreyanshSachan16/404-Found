@@ -5,7 +5,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 // User routes
-router.post('/', authenticateToken, upload.uploadReceipt.single('receipt_image'), claimController.submitClaim);
+router.post('/', authenticateToken, upload.uploadReceipt.single('receipt_image'), upload.verifyUploadMagicBytes('receipt'), claimController.submitClaim);
 router.get('/my', authenticateToken, claimController.getMyClaims);
 router.get('/:claimId/receipt', authenticateToken, claimController.getClaimReceipt);
 router.get('/receipt-file/:filename', authenticateToken, claimController.getReceiptByFilename);

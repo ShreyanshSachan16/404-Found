@@ -10,6 +10,10 @@ exports.sendMessage = (req, res) => {
       return res.status(400).json({ error: 'Item ID and message content are required.' });
     }
 
+    if (message_text.length > 2000) {
+      return res.status(400).json({ error: 'Message content exceeds maximum allowed length of 2000 characters.' });
+    }
+
     const item = db.prepare('SELECT * FROM items WHERE id = ?').get(item_id);
     if (!item) {
       return res.status(404).json({ error: 'Item not found.' });
@@ -32,6 +36,15 @@ exports.sendMessage = (req, res) => {
 
     if (!actualReceiverId) {
       return res.status(400).json({ error: 'Could not determine message recipient.' });
+    }
+
+    // Verify recipient authorization: must be item reporter, item claimant, or admin
+    if (req.user.role !== 'admin' && actualReceiverId !== item.user_id) {
+      const isClaimant = db.prepare('SELECT 1 FROM claims WHERE item_id = ? AND claimant_id = ?').get(item_id, actualReceiverId);
+      const isReceiverAdmin = db.prepare("SELECT role FROM users WHERE id = ? AND role = 'admin'").get(actualReceiverId);
+      if (!isClaimant && !isReceiverAdmin) {
+        return res.status(403).json({ error: 'Invalid or unauthorized message recipient.' });
+      }
     }
 
     const insertMsg = db.prepare(`

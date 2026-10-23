@@ -12,6 +12,8 @@ dist/
 build/
 client/dist/
 **/dist/
+dist-electron/
+desktop-runtime/
 
 # SQLite databases, WAL, shared-memory, and journals
 *.db
@@ -53,6 +55,9 @@ server/.env.*
 client/.env
 client/.env.*
 !client/.env.example
+.jwt_secret*
+*.key
+*.secret
 
 # Logs and debugging traces
 logs/
