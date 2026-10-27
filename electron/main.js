@@ -63,11 +63,27 @@ async function createWindow() {
   });
 
   // Smooth appearance once content is ready
-  mainWindow.once('ready-to-show', () => {
-    if (mainWindow) {
+  let windowShown = false;
+  const showMainWindow = () => {
+    if (mainWindow && !windowShown) {
+      windowShown = true;
       mainWindow.show();
       mainWindow.focus();
     }
+  };
+
+  mainWindow.once('ready-to-show', showMainWindow);
+
+  // Safety fallback: ensure window is displayed if ready-to-show is delayed
+  setTimeout(showMainWindow, 3000);
+
+  // Diagnostics: log if renderer fails to load
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main] Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log(`[Main] Page loaded successfully: ${mainWindow.webContents.getURL()} | Title: ${mainWindow.getTitle()}`);
   });
 
   mainWindow.on('closed', () => {

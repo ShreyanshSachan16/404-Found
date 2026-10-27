@@ -66,11 +66,16 @@
       {
         "from": "desktop-runtime/bin/node.exe",
         "to": "runtime/node.exe"
+      },
+      {
+        "from": "client/dist",
+        "to": "client/dist"
       }
     ],
     "asar": true,
     "asarUnpack": [
-      "electron/**/*"
+      "electron/**/*",
+      "client/dist/**/*"
     ],
     "win": {
       "target": [

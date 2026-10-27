@@ -26,6 +26,34 @@ class BackendManager {
 
     this._ensureDirectories();
     this.jwtSecret = this._getOrCreateJwtSecret();
+
+    if (!app.isPackaged) {
+      // In development, preserve and connect directly to the workspace database
+      const projectRoot = path.resolve(__dirname, '..');
+      const devDb = path.join(projectRoot, 'server', 'lost_and_found.db');
+      if (fs.existsSync(devDb)) {
+        this.dbPath = devDb;
+        this.uploadsDir = path.join(projectRoot, 'server', 'uploads');
+        this.receiptsDir = path.join(this.uploadsDir, 'receipts');
+      }
+    }
+  }
+
+  _copyDirSync(src, dest) {
+    if (!fs.existsSync(src)) return;
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          this._copyDirSync(srcPath, destPath);
+        } else {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      } catch {}
+    }
   }
 
   _ensureDirectories() {
@@ -90,20 +118,22 @@ class BackendManager {
   resolveNodeExecutable() {
     if (app.isPackaged) {
       // Look for packaged node runtime in resources/runtime/node.exe
-      const packagedNode = path.join(process.resourcesPath, 'runtime', 'node.exe');
-      if (fs.existsSync(packagedNode)) {
-        return packagedNode;
-      }
-      // Fallback if unpack directory differs
-      const altNode = path.join(process.resourcesPath, 'app.asar.unpacked', 'desktop-runtime', 'bin', 'node.exe');
-      if (fs.existsSync(altNode)) {
-        return altNode;
+      const candidatePaths = [
+        path.join(process.resourcesPath, 'runtime', 'node.exe'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'desktop-runtime', 'bin', 'node.exe'),
+        'C:\\Program Files\\nodejs\\node.exe'
+      ];
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) return p;
       }
     } else {
       // In development, prefer local desktop-runtime/bin/node.exe if present, else process.execPath
       const localRuntime = path.resolve(__dirname, '..', 'desktop-runtime', 'bin', 'node.exe');
       if (fs.existsSync(localRuntime)) {
         return localRuntime;
+      }
+      if (fs.existsSync('C:\\Program Files\\nodejs\\node.exe')) {
+        return 'C:\\Program Files\\nodejs\\node.exe';
       }
     }
     return process.execPath;
@@ -114,8 +144,7 @@ class BackendManager {
       // Packaged location in resources/server/src/index.js
       const candidatePaths = [
         path.join(process.resourcesPath, 'server', 'src', 'index.js'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'server', 'src', 'index.js'),
-        path.join(app.getAppPath(), 'server', 'src', 'index.js')
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'server', 'src', 'index.js')
       ];
       for (const p of candidatePaths) {
         if (fs.existsSync(p)) return p;
@@ -126,14 +155,37 @@ class BackendManager {
 
   resolveClientDist() {
     if (app.isPackaged) {
-      const candidatePaths = [
-        path.join(app.getAppPath(), 'client', 'dist'),
-        path.join(process.resourcesPath, 'client', 'dist'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'client', 'dist'),
-        path.join(__dirname, '..', 'client', 'dist')
-      ];
-      for (const p of candidatePaths) {
-        if (fs.existsSync(p)) return p;
+      // 1. Extra resources directory: resources/client/dist
+      const resourceDist = path.join(process.resourcesPath, 'client', 'dist');
+      if (fs.existsSync(resourceDist) && fs.existsSync(path.join(resourceDist, 'index.html'))) {
+        return resourceDist;
+      }
+
+      // 2. Unpacked asar directory: resources/app.asar.unpacked/client/dist
+      const unpackedDist = path.join(process.resourcesPath, 'app.asar.unpacked', 'client', 'dist');
+      if (fs.existsSync(unpackedDist) && fs.existsSync(path.join(unpackedDist, 'index.html'))) {
+        return unpackedDist;
+      }
+
+      // 3. User data extracted directory (real filesystem folder accessible to external node.exe)
+      const userDataDist = path.join(this.userDataDir, 'client_dist');
+
+      // 4. If packaged inside app.asar, extract to real physical folder in userDataDir
+      // Standard external node.exe process cannot read inside app.asar archive
+      const asarDist = path.join(__dirname, '..', 'client', 'dist');
+      if (fs.existsSync(asarDist) && fs.existsSync(path.join(asarDist, 'index.html'))) {
+        try {
+          this._copyDirSync(asarDist, userDataDist);
+          if (fs.existsSync(path.join(userDataDist, 'index.html'))) {
+            return userDataDist;
+          }
+        } catch (err) {
+          console.error('[BackendManager] Failed to extract client_dist from asar:', err);
+        }
+      }
+
+      if (fs.existsSync(userDataDist) && fs.existsSync(path.join(userDataDist, 'index.html'))) {
+        return userDataDist;
       }
     }
     return path.resolve(__dirname, '..', 'client', 'dist');
@@ -162,6 +214,8 @@ class BackendManager {
 
     const serverCwd = path.dirname(path.dirname(serverEntry));
 
+    const isUsingElectronBinary = !nodeExecutable.toLowerCase().endsWith('node.exe');
+
     const env = {
       ...process.env,
       NODE_ENV: 'production',
@@ -171,9 +225,12 @@ class BackendManager {
       UPLOAD_DIR: this.uploadsDir,
       RECEIPTS_DIR: this.receiptsDir,
       CLIENT_DIST_PATH: clientDist,
-      JWT_SECRET: this.jwtSecret,
-      ELECTRON_RUN_AS_NODE: undefined
+      JWT_SECRET: this.jwtSecret
     };
+
+    if (isUsingElectronBinary) {
+      env.ELECTRON_RUN_AS_NODE = '1';
+    }
 
     console.log(`[BackendManager] Spawning Express server on 127.0.0.1:${this.port}...`);
     this.process = spawn(nodeExecutable, [serverEntry], {
@@ -230,7 +287,15 @@ class BackendManager {
         if (res.ok) {
           const json = await res.json();
           if (json.status === 'ok') {
-            return true;
+            try {
+              const rootRes = await fetch(`${this.serverUrl}/`, { method: 'GET' });
+              const text = await rootRes.text();
+              if (rootRes.ok && text.includes('<div id="root"') && !text.includes('Cannot GET /')) {
+                return true;
+              }
+            } catch (rootErr) {
+              // Static route not ready yet
+            }
           }
         }
       } catch (err) {

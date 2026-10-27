@@ -42,10 +42,33 @@ async function checkHealthUrl(url) {
   return false;
 }
 
+async function checkRootServesHtml(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const text = await res.text();
+      return text.includes('<div id="root"') && !text.includes('Cannot GET /');
+    }
+  } catch (err) {
+    return false;
+  }
+  return false;
+}
+
 async function resolveServerPort(preferred = 5001) {
-  // 1. Check if 404 FOUND is already running on the preferred port
+  // 1. Check if 404 FOUND is already running on the preferred port with both API and static frontend
   if (await checkHealthUrl(`http://127.0.0.1:${preferred}/api/health`)) {
-    return { port: preferred, alreadyRunning: true };
+    if (await checkRootServesHtml(preferred)) {
+      return { port: preferred, alreadyRunning: true };
+    }
+    log(`Port ${preferred} responds to /api/health but fails to serve frontend HTML. Attempting to terminate stale instance...`);
+    try {
+      execSync(`powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${preferred} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`);
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (e) {}
+    if (await isPortAvailable(preferred)) {
+      return { port: preferred, alreadyRunning: false };
+    }
   }
 
   // 2. Check if preferred port is free
@@ -57,7 +80,7 @@ async function resolveServerPort(preferred = 5001) {
 
   // 3. Scan 5002..5050 to see if 404 FOUND is running on another port
   for (let p = preferred + 1; p <= preferred + 50; p++) {
-    if (await checkHealthUrl(`http://127.0.0.1:${p}/api/health`)) {
+    if (await checkHealthUrl(`http://127.0.0.1:${p}/api/health`) && await checkRootServesHtml(p)) {
       log(`Found existing 404 FOUND instance running on port ${p}`);
       return { port: p, alreadyRunning: true };
     }
@@ -108,8 +131,8 @@ async function pollHealth(port, timeoutMs = 25000) {
   const healthUrl = `http://127.0.0.1:${port}/api/health`;
   while (Date.now() - startTime < timeoutMs) {
     await new Promise((r) => setTimeout(r, 350));
-    if (await checkHealthUrl(healthUrl)) {
-      log(`Health check on port ${port} succeeded after ${Date.now() - startTime}ms`);
+    if (await checkHealthUrl(healthUrl) && await checkRootServesHtml(port)) {
+      log(`Health and frontend check on port ${port} succeeded after ${Date.now() - startTime}ms`);
       return true;
     }
   }
@@ -169,6 +192,9 @@ async function main() {
     nodeExe = bundledNode;
   }
 
+  const serverLogFile = path.join(ROOT_DIR, 'server', 'server-out.log');
+  const outStream = fs.openSync(serverLogFile, 'a');
+
   const serverProcess = spawn(nodeExe, [SERVER_ENTRY], {
     cwd: path.join(ROOT_DIR, 'server'),
     env: {
@@ -178,7 +204,7 @@ async function main() {
       CLIENT_DIST_PATH: CLIENT_DIST
     },
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', outStream, outStream],
     windowsHide: true
   });
 

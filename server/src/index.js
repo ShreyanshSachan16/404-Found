@@ -14,6 +14,22 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const userRoutes = require('./routes/userRoutes');
 
+// Ensure database has safe initial demo data if newly initialized or empty
+try {
+  const userCount = db.prepare('SELECT count(*) as count FROM users').get()?.count || 0;
+  if (userCount === 0) {
+    console.log('[Server] Fresh database detected. Initializing safe demo records...');
+    const { seed } = require('./db/seed');
+    seed().then(() => {
+      console.log('[Server] Safe demo data successfully seeded.');
+    }).catch((seedErr) => {
+      console.error('[Server WARNING] Auto-seeding error:', seedErr.message);
+    });
+  }
+} catch (err) {
+  console.warn('[Server WARNING] Auto-seeding check skipped:', err.message);
+}
+
 const app = express();
 
 // Security HTTP headers
@@ -144,16 +160,67 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve frontend static build if present (single-origin production deployment)
-const clientDistPath = config.CLIENT_DIST_PATH || path.join(__dirname, '..', '..', 'client', 'dist');
+// Locate frontend static build directory across all supported runtime environments
+function resolveStaticDist() {
+  const candidates = [
+    config.CLIENT_DIST_PATH,
+    path.join(__dirname, '..', '..', 'client', 'dist'),
+    path.join(__dirname, '..', 'client', 'dist'),
+    path.join(process.cwd(), 'client', 'dist'),
+    path.join(process.cwd(), '..', 'client', 'dist'),
+    process.env.APPDATA ? path.join(process.env.APPDATA, '404-found', 'client_dist') : null
+  ].filter(Boolean);
+
+  for (const dir of candidates) {
+    if (typeof dir === 'string' && !dir.includes('.asar')) {
+      try {
+        if (fs.existsSync(dir) && fs.existsSync(path.join(dir, 'index.html'))) {
+          return dir;
+        }
+      } catch {}
+    }
+  }
+  return config.CLIENT_DIST_PATH || path.join(__dirname, '..', '..', 'client', 'dist');
+}
+
+const clientDistPath = resolveStaticDist();
 const clientIndexFile = path.join(clientDistPath, 'index.html');
-if (fs.existsSync(clientDistPath)) {
+const hasStaticClient = !clientDistPath.includes('.asar') && fs.existsSync(clientDistPath) && fs.existsSync(clientIndexFile);
+
+if (hasStaticClient) {
+  console.log(`[Server] Serving static client build from: ${clientDistPath}`);
   app.use(express.static(clientDistPath));
   app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/uploads') && fs.existsSync(clientIndexFile)) {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
       return res.sendFile(clientIndexFile);
     }
     next();
+  });
+} else {
+  console.warn(`[Server WARNING] Client static build not found on disk. Checked: ${clientDistPath}`);
+  app.get('/', (req, res) => {
+    res.status(503).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>404 FOUND — Static Assets Initializing</title>
+        <style>
+          body { background: #0b0d14; color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { background: #131722; padding: 2.5rem; border-radius: 12px; border: 1px solid #1f293d; max-width: 480px; text-align: center; }
+          h1 { color: #f59e0b; margin-top: 0; font-size: 1.5rem; }
+          p { color: #9ca3af; font-size: 0.95rem; line-height: 1.5; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>404 FOUND</h1>
+          <p>Frontend production bundle is not present at the configured directory.</p>
+          <p style="font-family: monospace; font-size: 0.8rem; background: #0b0d14; padding: 0.6rem; border-radius: 6px; word-break: break-all;">${clientDistPath}</p>
+        </div>
+      </body>
+      </html>
+    `);
   });
 }
 
